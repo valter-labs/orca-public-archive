@@ -72,6 +72,7 @@ describe('NativeChatAppearancePreview', () => {
     const { container } = render(
       <NativeChatAppearancePreview settings={getDefaultSettings('/tmp')} />
     )
+    expect(container.querySelector('#chat-preview')).toBeNull()
 
     expect(screen.getByText('Preview')).toBeInTheDocument()
     expect(screen.getByText(/exit right after it starts on Windows/)).toBeInTheDocument()
