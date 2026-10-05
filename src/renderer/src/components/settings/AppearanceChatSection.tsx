@@ -17,14 +17,12 @@ export type AppearanceChatSectionProps = {
   settings: GlobalSettings
   updateSettings: (updates: Partial<GlobalSettings>) => void
   forceVisiblePrimary?: boolean
-  previewVisible?: boolean
 }
 
 export function AppearanceChatSection({
   settings,
   updateSettings,
-  forceVisiblePrimary = false,
-  previewVisible = true
+  forceVisiblePrimary = false
 }: AppearanceChatSectionProps): React.JSX.Element {
   const appearance = resolveNativeChatAppearanceSettings(settings.nativeChatAppearance)
   const increase = useShortcutLabel('zoom.in')
@@ -40,7 +38,7 @@ export function AppearanceChatSection({
   }
   return (
     <div className="divide-y divide-border/40">
-      {previewVisible ? <NativeChatAppearancePreview settings={settings} /> : null}
+      <NativeChatAppearancePreview settings={settings} />
       <AppearanceChatContrastControls
         appearance={appearance}
         onChange={update}
