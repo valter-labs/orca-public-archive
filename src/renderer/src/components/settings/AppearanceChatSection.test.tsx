@@ -120,6 +120,9 @@ describe('chat appearance settings card', () => {
     const entries = getAppearancePaneSearchEntries()
     for (const query of [
       'Chat',
+      'Match terminal interface',
+      'Contrast',
+      'brighter look',
       'Code text size',
       'tool output',
       'Comfortable',
