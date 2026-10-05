@@ -5,6 +5,7 @@ import {
 } from '../../../../shared/native-chat-appearance-settings'
 import { useShortcutLabel } from '@/hooks/useShortcutLabel'
 import { translate } from '@/i18n/i18n'
+import { AppearanceChatContrastControls } from './AppearanceChatContrastControls'
 import { Button } from '../ui/button'
 import { SearchableSetting } from './SearchableSetting'
 import { NumberField, SettingsRow, SettingsSegmentedControl } from './SettingsFormControls'
@@ -36,6 +37,11 @@ export function AppearanceChatSection({
   }
   return (
     <div className="divide-y divide-border/40">
+      <AppearanceChatContrastControls
+        appearance={appearance}
+        onChange={update}
+        forceVisiblePrimary={forceVisiblePrimary}
+      />
       <SearchableSetting {...entries.textSize} forceVisible={forceVisiblePrimary}>
         <NumberField
           label={entries.textSize.title}
