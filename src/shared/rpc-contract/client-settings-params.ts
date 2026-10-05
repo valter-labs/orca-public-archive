@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { isTaskProvider } from '../task-providers'
 import type { TaskProvider } from '../task-providers'
 import { isTuiAgent } from '../tui-agent-config'
+import type { TuiAgent } from '../tui-agent'
 import { normalizeDisabledTuiAgents } from '../tui-agent-selection'
 import {
   normalizeTuiAgentArgsRecord,
@@ -58,6 +59,68 @@ export const NativeChatSessionOptionsMutation = z.discriminatedUnion('type', [
     .strict()
 ])
 
+export const AGENT_CMD_OVERRIDE_MAX_LENGTH = 4096
+
+function hasNoControlCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
+}
+
+export type AgentCmdOverridesParseResult =
+  | { ok: true; overrides: Partial<Record<TuiAgent, string>> }
+  | { ok: false; error: string }
+
+/**
+ * Strict, unlike agentDefaultArgs: a command override replaces the executable Orca runs, so a
+ * typo'd agent id or non-string must fail loudly instead of silently dropping the operator's intent.
+ * Errors are fixed strings: keys and values are caller-controlled and may carry credentials.
+ */
+export function parseAgentCmdOverrides(value: unknown): AgentCmdOverridesParseResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ok: false, error: 'agentCmdOverrides must be an object' }
+  }
+  const overrides: Partial<Record<TuiAgent, string>> = {}
+  for (const [agent, command] of Object.entries(value)) {
+    if (!isTuiAgent(agent)) {
+      return { ok: false, error: 'agentCmdOverrides contains an unknown agent id' }
+    }
+    if (typeof command !== 'string') {
+      return { ok: false, error: 'Agent command override must be a string' }
+    }
+    if (command.length > AGENT_CMD_OVERRIDE_MAX_LENGTH) {
+      return { ok: false, error: 'Agent command override is too long' }
+    }
+    // Why: the override is typed into a terminal; a newline would submit a second command.
+    if (!hasNoControlCharacters(command)) {
+      return { ok: false, error: 'Agent command override must be a single line' }
+    }
+    const trimmed = command.trim()
+    // Empty matches the desktop editor: clearing the field removes the override.
+    if (trimmed) {
+      overrides[agent] = trimmed
+    }
+  }
+  return { ok: true, overrides }
+}
+
+export const AgentCmdOverridesUpdate = z
+  .unknown()
+  .superRefine((value, ctx) => {
+    const parsed = parseAgentCmdOverrides(value)
+    if (!parsed.ok) {
+      ctx.addIssue({ code: 'custom', message: parsed.error })
+    }
+  })
+  .transform((value) => {
+    const parsed = parseAgentCmdOverrides(value)
+    return parsed.ok ? parsed.overrides : {}
+  })
+
 export const GitHubProjectRef = z
   .object({
     owner: z.string(),
@@ -94,6 +157,7 @@ export const SettingsUpdate = z
       .unknown()
       .transform((value) => normalizeDisabledTuiAgents(value))
       .optional(),
+    agentCmdOverrides: AgentCmdOverridesUpdate.optional(),
     agentDefaultArgs: z
       .unknown()
       .transform((value) => normalizeTuiAgentArgsRecord(value))

@@ -10,8 +10,72 @@ import { getTerminalHandle } from '../selectors'
 
 type TerminalSendResult = { send: RuntimeTerminalSend; warnings?: string[] }
 
+export const TERMINAL_SEND_STDIN_MAX_BYTES = 64 * 1024
+
+type TerminalSendStdin = AsyncIterable<unknown> & { isTTY?: boolean }
+
+function hasDisallowedControlCharacter(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index)
+    // Tab, LF, and CR are prompt text; any other control byte (ESC included) drives the terminal.
+    if ((code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || code === 0x7f) {
+      return true
+    }
+  }
+  return false
+}
+
+// Why stdin: a private prompt passed as --text lands in argv, shell history, and process listings.
+export async function readTerminalSendStdin(stdin: TerminalSendStdin): Promise<string> {
+  if (stdin.isTTY) {
+    throw new RuntimeClientError(
+      'invalid_argument',
+      '--text-stdin requires piped input, not a TTY.'
+    )
+  }
+  const chunks: Buffer[] = []
+  let bytes = 0
+  for await (const chunk of stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+    bytes += buffer.length
+    if (bytes > TERMINAL_SEND_STDIN_MAX_BYTES) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        `--text-stdin input is larger than ${TERMINAL_SEND_STDIN_MAX_BYTES} bytes.`
+      )
+    }
+    chunks.push(buffer)
+  }
+  let text: string
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))
+  } catch {
+    throw new RuntimeClientError('invalid_argument', '--text-stdin input is not valid UTF-8.')
+  }
+  if (text.length === 0) {
+    throw new RuntimeClientError('invalid_argument', '--text-stdin input is empty.')
+  }
+  if (hasDisallowedControlCharacter(text)) {
+    throw new RuntimeClientError(
+      'invalid_argument',
+      '--text-stdin input contains control characters other than tab and newline.'
+    )
+  }
+  return text
+}
+
+async function readTextFlag(flags: Map<string, string | boolean>): Promise<string | undefined> {
+  if (!flags.has('text-stdin')) {
+    return getOptionalStringFlag(flags, 'text')
+  }
+  if (flags.has('text')) {
+    throw new RuntimeClientError('invalid_argument', 'Use either --text or --text-stdin, not both.')
+  }
+  return await readTerminalSendStdin(process.stdin)
+}
+
 export const terminalSendHandler: CommandHandler = async ({ flags, client, cwd, json }) => {
-  const text = getOptionalStringFlag(flags, 'text')
+  const text = await readTextFlag(flags)
   const enter = flags.get('enter') === true
   const interrupt = flags.get('interrupt') === true
   const promptCandidate = !!text && enter && !interrupt

@@ -71,6 +71,7 @@ export type RuntimeClientSettingsUpdate = Pick<
   | 'agentStatusHooksEnabled'
   | 'defaultTuiAgent'
   | 'disabledTuiAgents'
+  | 'agentCmdOverrides'
   | 'agentDefaultArgs'
   | 'agentDefaultEnv'
   | 'defaultTaskSource'
