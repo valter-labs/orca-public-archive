@@ -31,6 +31,13 @@ export type NativeChatSendOptions = {
    * pasting on top of residue.
    */
   confirmCleared?: () => boolean
+  /**
+   * Bracketed-paste frame even a single-line body. Workaround for Claude Code (seen on 2.1.289):
+   * after resuming, an unframed body following Ctrl+U can leave the first Enter unsubmitted.
+   * Input-event batching is suspected, not proven. Remove once clear + raw text + one Enter
+   * reliably submits on supported Claude versions.
+   */
+  frameBody?: boolean
 }
 
 type RuntimeSettings = ReturnType<typeof getSettingsForAgentTabRuntimeOwner>

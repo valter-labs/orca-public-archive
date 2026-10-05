@@ -22,7 +22,7 @@ export const NATIVE_CHAT_SUBMIT = SUBMIT
 
 /**
  * Compute the bytes for `text` WITHOUT the trailing submit:
- *  - single-line → `text`
+ *  - single-line → `text` by default; optionally bracketed-paste wrapped
  *  - multi-line  → `\x1b[200~…\x1b[201~` (bracketed-paste wrapped, no submit)
  *
  * Why split the submit out: agent TUIs treat a framed paste that carries a
@@ -31,8 +31,11 @@ export const NATIVE_CHAT_SUBMIT = SUBMIT
  * body first, then write `NATIVE_CHAT_SUBMIT` as a separate, slightly-delayed
  * write (mirrors orca-runtime's writeTerminalAction Enter handling).
  */
-export function buildNativeChatPasteBytes(text: string): string {
-  if (isMultilineDraft(text)) {
+export function buildNativeChatPasteBytes(
+  text: string,
+  options?: { frameSingleLine?: boolean }
+): string {
+  if (options?.frameSingleLine || isMultilineDraft(text)) {
     return wrapTerminalBracketedPasteText(text)
   }
   // Why: sanitize even unframed text so pasted scrollback cannot carry a raw

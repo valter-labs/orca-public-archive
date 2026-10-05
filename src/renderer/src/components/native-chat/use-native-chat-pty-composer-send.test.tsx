@@ -67,6 +67,7 @@ it('routes a Claude chat send outcome to its own pending echo', () => {
   options?.onWriteUnconfirmed?.()
   expect(callbacks.rejected).toHaveBeenCalledWith('pending-1')
   expect(callbacks.unconfirmed).toHaveBeenCalledWith('pending-1')
+  expect(options?.frameBody).toBe(true)
 })
 
 it('routes a Claude image send outcome to its own pending echo', () => {
@@ -81,4 +82,6 @@ it.each([
 ] as const)('leaves a %s %s send on the unobserved write path', (agent, classification, draft) => {
   send(agent, classification, draft)
   expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.onWriteRejected).toBeUndefined()
+  // Slash commands and Codex keep raw single-line bytes; only Claude chat bodies are framed.
+  expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.frameBody).toBeUndefined()
 })
