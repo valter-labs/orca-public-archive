@@ -19025,5 +19025,7 @@
   },
   "fileSearch": {
     "failed": "Search failed. Try again."
-  }
+  },
+  "settings.appearance.chat.title": "Chat",
+  "settings.appearance.chat.defaultSummary": "14px · Comfortable width"
 }
