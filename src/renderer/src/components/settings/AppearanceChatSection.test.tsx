@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import { AppearanceChatSection } from './AppearanceChatSection'
-import { getAppearancePaneSearchEntries } from './appearance-search'
+import { getChatAppearanceSearchEntries } from './chat-appearance-search'
 import { matchesSettingsSearch } from './settings-search'
 
 const mocks = vi.hoisted(
@@ -25,7 +25,7 @@ afterEach(() => {
   mocks.platform = 'linux'
 })
 
-describe('chat appearance settings card', () => {
+describe('chat appearance settings controls', () => {
   it.each([
     { platform: 'darwin', prefix: '⌘' },
     { platform: 'win32', prefix: 'Ctrl+' },
@@ -92,8 +92,8 @@ describe('chat appearance settings card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(updateSettings).toHaveBeenLastCalledWith({ nativeChatAppearance: undefined })
   })
-  it('indexes each row and width choice in Appearance settings search', () => {
-    const entries = getAppearancePaneSearchEntries()
+  it('indexes each row and width choice in Chat settings search', () => {
+    const entries = getChatAppearanceSearchEntries()
     for (const query of [
       'Chat',
       'Match terminal interface',
