@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import {
   agentJournalItemKey,
   agentJournalSubmissionKey
@@ -26,7 +27,7 @@ const IDENTITY: AgentSessionJournalIdentity = {
   workspaceId: 'workspace-1',
   hostId: 'host-1',
   agent: 'codex',
-  providerHandle: { kind: 'codex', threadId: 'thread-1' }
+  providerHandle: codexProviderHandle('thread-1')
 }
 const BODY: AgentJournalMessageItem = {
   kind: 'message',
