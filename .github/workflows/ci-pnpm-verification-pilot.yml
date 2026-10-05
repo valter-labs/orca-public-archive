@@ -13,7 +13,6 @@ jobs:
     timeout-minutes: 15
     env:
       CI_SOURCE_SHA: 'fc7828c2aa5f195901ccd541898c6db79bf76ed5'
-      PROOF_DIR: ${{ runner.temp }}/orca-relay-node26-proof
       ORCA_BACKGROUND_LAUNCH: '1'
       NO_COLOR: '1'
     steps:
@@ -29,6 +28,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PROOF_DIR="$RUNNER_TEMP/orca-relay-node26-proof"
+          printf 'PROOF_DIR=%s\n' "$PROOF_DIR" >> "$GITHUB_ENV"
           mkdir -p "$PROOF_DIR"
           checked_out_sha="$(git rev-parse HEAD)"
           test "$checked_out_sha" = "$CI_SOURCE_SHA"
@@ -177,6 +178,7 @@ jobs:
         id: receipt
         if: always()
         env:
+          PROOF_DIR: ${{ runner.temp }}/orca-relay-node26-proof
           ACTUAL_STEPS: ${{ toJSON(steps) }}
           ACTUAL_JOB_STATUS: ${{ job.status }}
         shell: bash
