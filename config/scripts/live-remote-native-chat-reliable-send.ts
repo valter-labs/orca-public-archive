@@ -188,7 +188,7 @@ try {
   await tab.click()
   stage = 'chat-toggle-ui'
   const showChat = page.getByRole('button', { name: 'Show chat view', exact: true })
-  const showTerminal = page.getByRole('button', { name: 'Show terminal view', exact: true })
+  const showTerminal = page.getByRole('button', { name: 'Show terminal', exact: true })
   await expect(showChat.or(showTerminal)).toBeVisible({ timeout: 30_000 })
   if (await showChat.isVisible()) {
     await showChat.click()
