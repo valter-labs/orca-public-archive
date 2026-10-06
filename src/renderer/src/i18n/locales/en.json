@@ -17972,6 +17972,7 @@
       },
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
+      "receivedByServer": "Received by server — waiting for the conversation",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",
