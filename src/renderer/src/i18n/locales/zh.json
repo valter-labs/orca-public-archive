@@ -17424,7 +17424,6 @@
         "imageUnsupported": "此智能体不支持粘贴图片。",
         "send": "发送",
         "noPty": "没有实时终端，请切回终端以重新连接。",
-        "locked": "输入正被另一台设备占用。",
         "placeholder": "发送消息…",
         "mentionHint": "引用文件：",
         "attach": "附加文件",

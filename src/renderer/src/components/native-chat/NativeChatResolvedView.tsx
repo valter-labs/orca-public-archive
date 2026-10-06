@@ -379,9 +379,8 @@ export function NativeChatResolvedView({
         onShowingQuestionChange={setQuestionActive}
         answerInputRef={questionAnswerInputRef}
       />
-      {/* canSend reflects the mobile presence-lock: when a mobile client holds
-          the pty, the composer shows its guarded state instead of racing the
-          mobile driver (R8). */}
+      {/* Retained PTYs remain mounted during reconnects and mobile presence locks;
+          canSend guards sending while the composer keeps drafts locally. */}
       {questionActive ? null : (
         <NativeChatComposer
           ref={composerRef}

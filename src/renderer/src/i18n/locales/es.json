@@ -15057,7 +15057,6 @@
         "imageUnsupported": "Este agente no admite pegar imágenes.",
         "send": "Enviar",
         "noPty": "No hay terminal activa: vuelva a alternar para volver a conectarse.",
-        "locked": "La entrada está retenida por otro dispositivo.",
         "placeholder": "Enviar un mensaje…",
         "mentionHint": "Archivo de referencia:",
         "attach": "Adjuntar archivo",

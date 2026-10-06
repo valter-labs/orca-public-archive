@@ -17523,7 +17523,6 @@
         "imageUnsupported": "Le collage d'image n'est pas pris en charge pour cet agent.",
         "send": "Envoyer",
         "noPty": "Aucun terminal actif — rebasculez pour vous reconnecter.",
-        "locked": "La saisie est détenue par un autre appareil.",
         "placeholder": "Envoyer un message…",
         "mentionHint": "Fichier référencé :",
         "attach": "Joindre un fichier",

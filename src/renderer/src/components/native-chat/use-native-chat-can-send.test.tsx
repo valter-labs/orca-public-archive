@@ -17,8 +17,11 @@ vi.mock('../../store', async () => {
     )
   }
 })
+vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
+vi.mock('@/runtime/runtime-terminal-inspection', () => ({ isRemoteRuntimePtyId: vi.fn() }))
 import { useAppStore } from '../../store'
 import { useNativeChatCanSend } from './use-native-chat-can-send'
+import { nativeChatComposerPlaceholder } from './native-chat-composer-target'
 
 const status: RuntimeStatus = {
   runtimeId: 'runtime-a',
@@ -72,8 +75,12 @@ describe('paired native Chat send availability', () => {
       publish('verified', 'ready')
       const { result } = renderHook(() => useNativeChatCanSend(ptyId, agent))
       expect(result.current).toBe(true)
+      expect(nativeChatComposerPlaceholder(true, result.current)).toBe('Send a message…')
       publish('unavailable', 'disconnected')
       expect(result.current).toBe(false)
+      expect(nativeChatComposerPlaceholder(true, result.current)).toBe(
+        'Sending is temporarily unavailable.'
+      )
       publish('checking', 'connecting')
       expect(result.current).toBe(false)
       publish('unavailable', 'ready')
@@ -84,6 +91,9 @@ describe('paired native Chat send availability', () => {
       expect(result.current).toBe(true)
       act(() => setDriverForPty(ptyId, { kind: 'mobile', clientId: 'phone' }))
       expect(result.current).toBe(false)
+      expect(nativeChatComposerPlaceholder(true, result.current)).toBe(
+        'Sending is temporarily unavailable.'
+      )
       act(() => setDriverForPty(ptyId, { kind: 'idle' }))
       expect(result.current).toBe(true)
     }

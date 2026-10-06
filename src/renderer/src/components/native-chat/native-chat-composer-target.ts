@@ -19,7 +19,10 @@ export function nativeChatComposerPlaceholder(hasPty: boolean, canSend: boolean)
     )
   }
   if (!canSend) {
-    return translate('components.native-chat.composer.locked', 'Input is held by another device.')
+    return translate(
+      'components.native-chat.composer.sendUnavailable',
+      'Sending is temporarily unavailable.'
+    )
   }
   return translate('components.native-chat.composer.placeholder', 'Send a message…')
 }
