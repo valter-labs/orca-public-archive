@@ -1,4 +1,13 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import {
+  copyFileSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -29,6 +38,39 @@ function moduleTree(files) {
   }
   return root
 }
+
+it('detects a cold checkout before installation and fails closed if the graph remains unavailable', () => {
+  const root = moduleTree({ changes: '' })
+  for (const file of [
+    'node-server-change-scope.mjs',
+    'node-server-test-paths.mjs',
+    'node-server-qualification.mjs'
+  ]) {
+    copyFileSync(new URL(file, import.meta.url), join(root, file))
+  }
+  const run = (files, deferGraph) => {
+    writeFileSync(join(root, 'changes'), files.join('\0'))
+    const result = spawnSync(
+      process.execPath,
+      [
+        realpathSync(join(root, 'node-server-change-scope.mjs')),
+        join(root, 'changes'),
+        ...(deferGraph ? ['--defer-graph'] : [])
+      ],
+      { cwd: root, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: '' } }
+    )
+    expect(result.status, result.stderr).toBe(0)
+    return result.stdout
+  }
+  expect(run(['package.json'], true)).toContain('should_run=true\n')
+  expect(run([], true)).toContain('should_run=true\n')
+  const deferred = run(['src/renderer/src/components/Example.tsx'], true)
+  expect(deferred).toContain('graph_required=true\n')
+  expect(deferred).not.toMatch(/should_run=|qualification=|runners=/)
+  const unavailable = run(['src/renderer/src/components/Example.tsx'], false)
+  expect(unavailable).toContain('Dependency graph unavailable')
+  expect(unavailable).toContain('should_run=true\nqualification=true\n')
+})
 
 it('follows static imports, re-exports, dynamic imports and require without executing source', async () => {
   const root = moduleTree({
@@ -149,7 +191,10 @@ it('keeps every platform job and runs them when detection is skipped or fails', 
   expect(detect.env.PUSH_BASE).toBe('${{ github.event.before }}')
   expect(detect.run).toContain('git fetch --no-tags --depth=1 origin "$PUSH_BASE"')
   expect(detect.run).toContain('git diff --name-only --no-renames -z "$PUSH_BASE" HEAD')
-  expect(detect.run).toContain('node-server-changes" --full-qualification')
+  expect(detect.run).toContain('node-server-changes" --defer-graph --full-qualification')
+  const graph = workflow.jobs.changes.steps.find((step) => step.id === 'graph')
+  expect(graph.if).toBe("steps.scope.outputs.graph_required == 'true'")
+  expect(graph.run).toContain('node-server-changes" --full-qualification')
   expect(workflow.on.pull_request.types).toContain('ready_for_review')
   expect(workflow.on.schedule).toHaveLength(1)
   // A pull request may qualify one platform, so the merged commit must re-qualify all six.
@@ -213,11 +258,14 @@ it('runs the Bun and Node cross-runtime tests on Linux against pinned inputs', (
   expect(setupBun.with['bun-version']).toBe('1.4.2')
   const build = steps.find((step) => String(step.run).includes('build-orcad-bun.mjs'))
   expect(build.env.BUN_ORCAD_COMMIT).toMatch(/^[0-9a-f]{40}$/)
-  expect(build.run).toContain('ORCA_BUN_ORCAD_SLOT=')
-  expect(build.run).toContain('BUN_EXECUTABLE=')
-  for (const step of [setupBun, build]) {
-    expect(step.if).toBe("runner.os == 'Linux'")
-  }
+  const crossRuntime = steps.find((step) => String(step.run).includes('pnpm test:node-server'))
+  expect(crossRuntime.env.ORCA_BUN_ORCAD_SLOT).toBe('${{ steps.bun-orcad.outputs.slot }}')
+  expect(crossRuntime.env.BUN_EXECUTABLE).toBe('${{ steps.bun-orcad.outputs.executable }}')
+  expect(steps.indexOf(steps.find((step) => step.wait === 'bun-orcad'))).toBeGreaterThan(
+    steps.indexOf(build)
+  )
+  expect(setupBun.if).toBe("runner.os == 'Linux'")
+  expect(build.run.startsWith('if [ "$RUNNER_OS" != Linux ]; then exit 0; fi\n')).toBe(true)
   expect(steps.map((step) => step.run).join('\n')).toContain(
     "pnpm test:node-server --artifact ${{ runner.os == 'Linux' && '--cross-runtime' || '' }}"
   )
