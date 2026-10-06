@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { z } from 'zod'
 import {
   addEnvironmentFromPairingCode,
   listEnvironments,
@@ -228,11 +229,16 @@ function registerPassiveCallHandler(getUserDataPath: () => string): void {
         timeoutMs?: number
         expectedEnvironmentPairingRevision?: number
         expectedEnvironmentRuntimeId?: string
+        orchestrationRequestId?: string
       }
     ): Promise<RuntimeRpcResponse<unknown>> => {
       const environment = resolveEnvironment(getUserDataPath(), args.selector)
       if (isRuntimeEnvironmentManuallyDisconnected(environment.id)) {
         return manuallyDisconnectedResponse(environment)
+      }
+      const requestId = z.string().uuid().optional().parse(args.orchestrationRequestId)
+      if (requestId && args.method !== 'terminal.send') {
+        throw new Error('Durable desktop request IDs are only supported for terminal.send.')
       }
       let response: RuntimeRpcResponse<unknown>
       try {
@@ -243,7 +249,7 @@ function registerPassiveCallHandler(getUserDataPath: () => string): void {
           args.params,
           args.timeoutMs,
           args.expectedEnvironmentPairingRevision,
-          undefined,
+          requestId ? { orchestrationRequestId: requestId } : undefined,
           { expectedEnvironmentRuntimeId: args.expectedEnvironmentRuntimeId }
         )
       } catch (error) {

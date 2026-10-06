@@ -32,6 +32,37 @@ export async function assertTerminalSendTextWithinLimit(text: string | undefined
   }
 }
 
+// Why: clearing is only safe as the first step of one durable, receipted prompt submission.
+export function assertTerminalSendClearInputRequest(
+  params: {
+    clearUnsubmittedInput?: true
+    agentPrompt?: true
+    text?: string
+    enter?: unknown
+    interrupt?: unknown
+    inputKind?: string
+    requireAgentStatus?: string
+    client?: { type?: string }
+  },
+  hasDurableRequest: boolean
+): void {
+  if (
+    params.clearUnsubmittedInput === true &&
+    (!hasDurableRequest ||
+      params.agentPrompt !== true ||
+      !params.text ||
+      params.enter !== true ||
+      params.interrupt === true ||
+      params.inputKind !== undefined ||
+      params.requireAgentStatus !== undefined ||
+      params.client?.type !== 'desktop')
+  ) {
+    throw new InvalidArgumentError(
+      'clearUnsubmittedInput requires a desktop agent prompt with text, Enter, and a request ID'
+    )
+  }
+}
+
 export function resolveMobileFloorClientId(
   driver: DriverState | null,
   client: TerminalViewportClient | undefined

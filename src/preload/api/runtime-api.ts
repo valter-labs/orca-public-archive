@@ -124,6 +124,7 @@ export type RuntimeApi = {
       timeoutMs?: number
       expectedEnvironmentPairingRevision?: number
       expectedEnvironmentRuntimeId?: string
+      orchestrationRequestId?: string
     }) => Promise<RuntimeRpcResponse<unknown>>
     subscribe: (
       args: {

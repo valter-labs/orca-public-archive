@@ -6,6 +6,8 @@ import {
   NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS,
   useNativeChatPendingDelivery
 } from './use-native-chat-pending-delivery'
+import { recoverNativeChatReliableDelivery } from './native-chat-reliable-send'
+vi.mock('./native-chat-reliable-send', () => ({ recoverNativeChatReliableDelivery: vi.fn() }))
 import { clearPendingSendCacheForTests } from './native-chat-pending'
 
 const boundary: NativeChatMessage = {
@@ -134,4 +136,69 @@ describe('terminal Chat pending delivery', () => {
     expect(result.current.pending).toBe(pending)
     expect(result.current.notices).toBe(notices)
   })
+})
+
+it('retains uncertainty immediately and on remount, then recovers only the original receipt', async () => {
+  const binding = {
+    requestId: 'same-request',
+    environmentId: 'env',
+    runtimeId: 'owner',
+    pairingRevision: 42,
+    terminal: 'terminal',
+    provider: 'claude' as const
+  }
+  vi.mocked(recoverNativeChatReliableDelivery).mockResolvedValue(null)
+  const first = render()
+  let id = ''
+  act(() => {
+    id = first.result.current.record('only copy')
+    first.result.current.beginReliable(id, binding)
+    first.result.current.holdUnconfirmed(id)
+    first.result.current.clear()
+  })
+  expect(first.result.current.pending[0]?.delivery).toBe('unconfirmed')
+  expect([...first.result.current.notices.values()][0]?.text).toMatch(/Delivery unconfirmed/)
+  first.unmount()
+  const second = render()
+  await act(async () => {
+    await Promise.resolve()
+  })
+  expect(recoverNativeChatReliableDelivery).toHaveBeenCalledWith(binding)
+  expect(second.result.current.pending[0]?.text).toBe('only copy')
+  expect(second.result.current.pending[0]?.delivery).toBe('unconfirmed')
+  act(() =>
+    second.result.current.received(id, {
+      ...binding,
+      processIncarnation: 'incarnation',
+      generation: 5
+    })
+  )
+  expect([...second.result.current.notices.values()][0]?.text).toBe(
+    'Received by server — waiting for the conversation'
+  )
+  expect(second.result.current.pending).toHaveLength(1)
+  second.rerender({ messages: [boundary, userRow('only copy'), { ...boundary, id: 'answer' }] })
+  expect(second.result.current.pending).toEqual([])
+})
+
+it('updates a remounted pane when the original send loses its acknowledgment later', () => {
+  const first = render()
+  let id = ''
+  act(() => {
+    id = first.result.current.record('late lost ack')
+    first.result.current.beginReliable(id, {
+      requestId: 'late',
+      environmentId: 'env',
+      runtimeId: 'owner',
+      pairingRevision: 42,
+      terminal: 'terminal',
+      provider: 'claude'
+    })
+  })
+  const originalOutcome = first.result.current.holdUnconfirmed
+  first.unmount()
+  const second = render()
+  act(() => originalOutcome(id))
+  expect(second.result.current.pending[0]?.delivery).toBe('unconfirmed')
+  expect([...second.result.current.notices.values()][0]?.text).toMatch(/Delivery unconfirmed/)
 })

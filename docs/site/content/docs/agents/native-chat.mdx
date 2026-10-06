@@ -17,9 +17,39 @@ Toggle Chat UI ↔ terminal from the agent pane once enabled.
 
 ## Composer
 
-- Type a message and send (or stop a working turn). Attach files/images when the host supports it. Unsent draft text and attachments stay with the pane across disconnect/reconnect when the host can restore them. A settled transcript also stays on screen while the same session reconnects, instead of blanking until the fresh load finishes (desktop and mobile share that retention).
+- Type a message and send (or stop a working turn). Text drafts remain editable while a paired server is offline; sending requires a connection. Attach files/images when the host supports it. Unsent draft text and attachments stay with the pane across disconnect/reconnect when the host can restore them. A settled transcript also stays on screen while the same session reconnects, instead of blanking until the fresh load finishes (desktop and mobile share that retention).
 - Type `/` for slash commands and discovered **skills** (filtered per agent when possible). The slash catalog is agent-aware (Claude vs Codex command sets) and shared with mobile Chat UI.
 - Use the **model** and options pills (thought level, mode, agent-specific session options) when the agent exposes them. **Claude** model choices come from the **installed Claude CLI on that host** (not a hardcoded list), so new models show up after you update the CLI. **Codex** supports direct model selection from the pill (sends `/model <id>`), with bare `/model` still opening the agent picker. **Grok** exposes **model** (`-m` at launch, `/model` mid-session) and **reasoning effort** (`--reasoning-effort` at launch, `/effort` mid-session); the model list is probed from the signed-in Grok CLI (`grok models`) so retired ids drop out of the picker. Effort choices follow the selected model: Grok 4.6 includes **Extra high**, while Grok 4.5 stops at **High**. **Before the agent process starts**, the composer can show draft launch options that apply on first start; after the session is live, pills that only affect a running turn stay disabled or labeled until the session is ready. Live values go to the CLI in that tab.
+
+## Remote messages and reconnecting
+
+Plain-text **Claude** and **Codex** messages sent from desktop Chat UI to a paired [Remote Orca Server](/docs/remote-servers) have a server receipt. Slash commands, messages with attachments, local sessions, and direct SSH sessions use their existing delivery paths.
+
+- **Received by server — waiting for the conversation** means the server accepted the input. It does not confirm that the agent started a turn. The conversation's own message replaces the local pending copy when it appears.
+- **Delivery unconfirmed — check chat before retrying** means Orca could not confirm the outcome. Reconnecting checks the original send's receipt on the same server pairing and runtime; it never automatically resends the message. Check the conversation before sending another copy.
+- **Message not sent** means the send was rejected. Its text stays visible. Use **Copy message** to keep the text or put it back in the composer; **Dismiss** removes the pending copy.
+
+An older server that cannot support this delivery path shows an update-required message before any prompt is written. Update the server before trying again.
+
+Orca retains up to **8 pending messages per pane** across **128 pane/agent groups**. Reaching a limit blocks new sends and keeps the current draft and retained messages available to copy. Resolve pending messages, or copy and dismiss them, before sending more.
+
+Drafts and pending copies are held in memory, not saved to disk. Reconnecting during the current app session is supported; retaining this local text after quitting or crashing is not guaranteed. Attachment sends do not have this receipt-based recovery.
+
+### Developer regression check
+
+Use **Node 24**, a private pairing file, and an existing Claude or Codex session prepared for this check on your remote server. From the repository root, prepare the Electron runtime and build a desktop candidate with E2E instrumentation; the script needs the exposed store to check startup readiness:
+
+```sh
+pnpm run ensure:electron-runtime
+VITE_EXPOSE_STORE=true pnpm exec electron-vite build --mode e2e
+pnpm exec jiti config/scripts/live-remote-native-chat-reliable-send.ts <private-pairing-file> <codex|claude> <session-UUID> <transcript-path|-> <worktree-id> <tab-label>
+```
+
+The check launches a hidden Electron instance with an isolated home and profile, types a unique probe through Chat UI, clicks **Send**, and requires exactly one matching user message and one assistant reply in the server's transcript. It does not create an agent session; the result reports whether the run passed.
+
+This delivery path requires `terminal.prompt-delivery.clear-input.v1` alongside prompt receipts: the server accepts the request UUID before clearing unfinished terminal input for a desktop Claude or Codex prompt. Clients refuse unsupported servers before writing input.
+
+Claude can leave the next prompt unsubmitted after a batched clear, so the server clears unfinished input one key at a time using the existing 16 ms cadence. The full bounded clear takes at least **2.512 seconds**, plus process checks before each later key and before submission; the receipt can therefore take several seconds while typing stays local. The prompt body remains one bracketed paste followed by one Enter, and replaying the same request never repeats those input effects.
 
 ## Questions from the agent
 

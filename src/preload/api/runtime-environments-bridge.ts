@@ -89,6 +89,7 @@ export const runtimeEnvironmentsApi = {
     timeoutMs?: number
     expectedEnvironmentPairingRevision?: number
     expectedEnvironmentRuntimeId?: string
+    orchestrationRequestId?: string
   }): Promise<RuntimeRpcResponse<unknown>> => ipcRenderer.invoke('runtimeEnvironments:call', args),
   subscribe: async (
     args: {

@@ -17653,7 +17653,7 @@
         "imageUnsupported": "Image paste is not supported for this agent.",
         "send": "Send",
         "noPty": "No live terminal — toggle back to reconnect.",
-        "locked": "Input is held by another device.",
+        "sendUnavailable": "Sending is temporarily unavailable.",
         "placeholder": "Send a message…",
         "mentionHint": "Referencing file:",
         "attach": "Attach file",
@@ -17972,6 +17972,7 @@
       },
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
+      "receivedByServer": "Received by server — waiting for the conversation",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",

@@ -1,3 +1,4 @@
+import type { NativeChatReliableDelivery } from './native-chat-reliable-send'
 import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { StructuredAgentContextUsage } from '../../../../shared/structured-agent-session-context-usage'
 import type { AgentSessionSlashCommand } from '../../../../shared/agent-session-wire'
@@ -39,6 +40,8 @@ export type NativeChatStructuredComposerTransport = {
 }
 
 export type NativeChatOptimisticSendOutcome = {
+  beginReliable?: (pendingId: string, binding: NativeChatReliableDelivery) => void
+  received?: (pendingId: string, binding: NativeChatReliableDelivery) => void
   /** The host refused the write: mark the echo "Message not sent". */
   reject: (pendingId: string) => void
   /** The write acknowledgment was lost: hold the echo, then flag it unconfirmed. */

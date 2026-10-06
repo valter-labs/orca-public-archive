@@ -107,6 +107,8 @@ export const TerminalSend = TerminalHandle.extend({
   agentPrompt: z.literal(true).optional(),
   // Why: waiting observes the same prompt receipt; it never authorizes a second write.
   waitSubmitMs: z.number().int().min(0).max(3_600_000).optional(),
+  // Why: older hosts strip this, so clients must gate on TERMINAL_PROMPT_CLEAR_INPUT_RUNTIME_CAPABILITY.
+  clearUnsubmittedInput: z.literal(true).optional(),
   resolvedLaunchDraft: z
     .object({
       text: z.string(),

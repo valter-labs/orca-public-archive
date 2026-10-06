@@ -107,7 +107,7 @@ export function NativeChatResolvedView({
   const hookWorkingEpoch = useAppStore(
     (s) => s.agentStatusByPaneKey[paneKey]?.stateStartedAt ?? null
   )
-  const canSend = useNativeChatCanSend(targetPtyId)
+  const canSend = useNativeChatCanSend(targetPtyId, agent)
   // Reuse the verified composer send path for interactive cards and composer
   // stop (Stop sends ESC, the agent-TUI interrupt key).
   const interactiveSend = useNativeChatInteractiveSend(terminalTabId, paneKey, targetPtyId, agent)
@@ -379,9 +379,8 @@ export function NativeChatResolvedView({
         onShowingQuestionChange={setQuestionActive}
         answerInputRef={questionAnswerInputRef}
       />
-      {/* canSend reflects the mobile presence-lock: when a mobile client holds
-          the pty, the composer shows its guarded state instead of racing the
-          mobile driver (R8). */}
+      {/* Retained PTYs remain mounted during reconnects and mobile presence locks;
+          canSend guards sending while the composer keeps drafts locally. */}
       {questionActive ? null : (
         <NativeChatComposer
           ref={composerRef}

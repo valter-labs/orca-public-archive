@@ -17459,7 +17459,6 @@
         "imageUnsupported": "이 에이전트는 이미지 붙여넣기를 지원하지 않습니다.",
         "send": "보내기",
         "noPty": "라이브 terminal이 없습니다. 다시 연결하려면 다시 전환하세요.",
-        "locked": "입력이 다른 장치에 의해 보류됩니다.",
         "placeholder": "메시지 보내기…",
         "mentionHint": "참조 파일:",
         "attach": "파일첨부",

@@ -673,4 +673,50 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     await expect(bg2).resolves.toMatchObject({ ok: true })
     await expect(bg3).resolves.toMatchObject({ ok: true })
   })
+  it('validates desktop UUIDs and forwards durable terminal.send outside the raw connection', async () => {
+    registerRuntimeEnvironmentHandlers(store as never)
+    sendRemoteRuntimeRequestMock.mockResolvedValue({
+      id: 'send',
+      ok: true,
+      result: { send: { accepted: true } },
+      _meta: { runtimeId: 'runtime-remote' }
+    })
+    const add = handler<{ name: string; pairingCode: string }, unknown>(
+      'runtimeEnvironments:addFromPairingCode'
+    )
+    await add(null, { name: 'desk', pairingCode: pairingCode() })
+    const call = handler<
+      { selector: string; method: string; params?: unknown; orchestrationRequestId: string },
+      unknown
+    >('runtimeEnvironments:call')
+    const requestId = '3139988a-2b58-45af-bacb-1e6c518aa955'
+    await call(null, {
+      selector: 'desk',
+      method: 'terminal.send',
+      params: { terminal: 'term-1', text: 'complete prompt', enter: true, agentPrompt: true },
+      orchestrationRequestId: requestId
+    })
+    expect(sendRemoteRuntimeRequestMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      'terminal.send',
+      expect.objectContaining({ text: 'complete prompt', enter: true }),
+      15_000,
+      { orchestrationRequestId: requestId },
+      undefined,
+      ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
+    )
+    expect(sendRemoteRuntimeConnectionRequestMock).not.toHaveBeenCalled()
+    sendRemoteRuntimeRequestMock.mockClear()
+    await expect(
+      call(null, {
+        selector: 'desk',
+        method: 'terminal.send',
+        orchestrationRequestId: 'not-a-uuid'
+      })
+    ).rejects.toThrow()
+    await expect(
+      call(null, { selector: 'desk', method: 'repo.list', orchestrationRequestId: requestId })
+    ).rejects.toThrow('only supported for terminal.send')
+    expect(sendRemoteRuntimeRequestMock).not.toHaveBeenCalled()
+  })
 })

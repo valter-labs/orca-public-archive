@@ -20,6 +20,8 @@ export type EnqueueNativeChatPtySendOptions = {
    * submitted. Used to clear leftover body text from the agent TUI.
    */
   onCancelUnsubmitted?: () => void
+  canCancel?: () => boolean
+  onCancelled?: () => void
 }
 
 type PtyQueueState = {
@@ -161,10 +163,11 @@ export function enqueueNativeChatPtySend(
 
   const handle: NativeChatPtySendQueueHandle = {
     cancel: () => {
-      if (cancelled) {
+      if (cancelled || options?.canCancel?.() === false) {
         return
       }
       cancelled = true
+      options?.onCancelled?.()
       for (const timer of timers) {
         clearTimeout(timer)
       }

@@ -530,6 +530,12 @@ before the composites start; the workflow contract now preserves that ordering.
   retain the same 85 files. Unrelated shard timings and mobile-test tooling can
   skip the matrix; shared shortcut definitions remain real runtime dependencies
   and still run it. Building the graph does not execute the imported modules.
+  Before dependencies are installed, `--defer-graph` resolves forced inputs
+  immediately without importing esbuild or the server build-entry module. Other
+  inputs emit only `graph_required=true`; `should_run`, `qualification`, and
+  `runners` stay unset until the installed-compiler graph phase decides, so the
+  first phase cannot mask its result. Missing or failed graph detection retains
+  the full-matrix fallback. This changes CI routing, not runtime or wire behavior.
 - Restore pnpm stores on PRs using setup-node's existing key and store path,
   without publishing more PR-private copies. Non-PR setup-node caching and
   native/TypeScript caches keep their existing behavior. A missing main store

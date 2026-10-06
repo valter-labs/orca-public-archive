@@ -55,6 +55,7 @@ export async function callRuntimeRpc<TResult>(
     signal?: AbortSignal
     expectedEnvironmentPairingRevision?: number
     expectedEnvironmentRuntimeId?: string
+    orchestrationRequestId?: string
   } = {}
 ): Promise<TResult> {
   const expectedEnvironmentPairingRevision =
@@ -90,7 +91,8 @@ export async function callRuntimeRpc<TResult>(
           timeoutMs: options.timeoutMs,
           signal: options.signal,
           expectedEnvironmentPairingRevision,
-          expectedEnvironmentRuntimeId: options.expectedEnvironmentRuntimeId
+          expectedEnvironmentRuntimeId: options.expectedEnvironmentRuntimeId,
+          orchestrationRequestId: options.orchestrationRequestId
         })
   return unwrapRuntimeRpcResult<TResult>(response as RuntimeRpcResponse<TResult>)
 }

@@ -4,6 +4,7 @@ import { isTerminalQueryReply } from '../../../../../shared/terminal-query-reply
 import { assertTerminalAgentSendable } from '../../terminal-agent-send-guard'
 import { TerminalSend } from './unary-schemas'
 import {
+  assertTerminalSendClearInputRequest,
   assertTerminalSendExactPtyBinding,
   assertTerminalSendTextWithinLimit,
   commitMobileInputFloorClaim,
@@ -62,6 +63,7 @@ export const TERMINAL_SEND_METHODS = [
       ) {
         throw new InvalidArgumentError('Invalid terminal query reply')
       }
+      assertTerminalSendClearInputRequest(params, orchestrationMutation !== undefined)
       const replayObservation = await observeReplayedTerminalPrompt(
         runtime,
         params.terminal,
@@ -195,6 +197,17 @@ export const TERMINAL_SEND_METHODS = [
         params.interrupt !== true &&
         params.client?.type === 'desktop' &&
         (await runtime.isTerminalRunningSettledPromptAgent(params.terminal))
+      if (params.clearUnsubmittedInput === true && !useSettledAgentPrompt) {
+        // Why: the raw fallback cannot clear safely (a shell or unsettled TUI would take the
+        // clear bytes as input), so refuse before touching the terminal; the caller keeps the text.
+        return {
+          send: {
+            handle: params.terminal,
+            accepted: false,
+            bytesWritten: 0
+          }
+        }
+      }
       const reserveWrite =
         params.inputKind !== 'query-reply' && leaf?.ptyId && mobileFloorClientId
           ? (ptyId: string): void => {
@@ -205,8 +218,7 @@ export const TERMINAL_SEND_METHODS = [
               mobileFloorClaim.current = claim
             }
           : undefined
-      let result
-      let acceptedPromptCheckpoint: unknown
+      let result, acceptedPromptCheckpoint: unknown
       try {
         result = useSettledAgentPrompt
           ? await runtime.sendTerminalAgentPrompt(params.terminal, params.text!, {
@@ -218,6 +230,7 @@ export const TERMINAL_SEND_METHODS = [
                     acceptQueued: true,
                     observationTimeoutMs: params.waitSubmitMs ?? 0,
                     requestId: orchestrationMutation.requestId,
+                    clearUnsubmittedInput: params.clearUnsubmittedInput,
                     onInputAccepted: (send) => {
                       acceptedPromptCheckpoint = { send }
                       recordMutationReceipt?.(acceptedPromptCheckpoint)
