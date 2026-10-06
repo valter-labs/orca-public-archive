@@ -37,12 +37,12 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     this.assertAgentPromptPermissionSafe(permissionBaseline, permissionBaseline)
     const writeHostPlatform = this.getPtyWriteHostPlatform(ptyId)
     const pty = this.ptysById.get(ptyId)
+    // Why: later foreground refreshes must not redirect the delayed Enter to a different agent.
+    const expectedAgent = pty?.foregroundAgent ?? pty?.launchAgent
     // OMP treats a large bracketed paste as a menu unless submit arrives in the same PTY write.
     // Once a foreground agent is known, it is the process that will consume the bytes;
     // launchAgent is only the fallback during startup before process detection settles.
-    const submitWithPaste = agentPromptSubmitJoinsPasteFrame(
-      pty?.foregroundAgent ?? pty?.launchAgent
-    )
+    const submitWithPaste = agentPromptSubmitJoinsPasteFrame(expectedAgent)
     const pasteByteLength = Buffer.byteLength(pastePayload, 'utf8')
     const pasteIngestMs = getTerminalPasteIngestMs(writeHostPlatform, pasteByteLength)
     const renderGate = this.createAgentPromptRenderGate(ptyId, pasteIngestMs)
@@ -54,7 +54,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       assertAgentPromptRequestActive(options.signal)
       this.assertAgentPromptGeneration(ptyId, generation)
       if (options.clearUnsubmittedInput) {
-        await this.assertChatPromptForegroundAgent(ptyId)
+        await this.assertChatPromptForegroundAgent(ptyId, expectedAgent)
       }
       await options.beforeWrite?.(ptyId)
       assertAgentPromptRequestActive(options.signal)
@@ -105,7 +105,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     if (!submitWithPaste) {
       try {
         if (options.clearUnsubmittedInput) {
-          await this.assertChatPromptForegroundAgent(ptyId, true)
+          await this.assertChatPromptForegroundAgent(ptyId, expectedAgent, true)
         }
         await options.beforeWrite?.(ptyId)
       } catch (error) {
@@ -214,6 +214,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
   }
   private async assertChatPromptForegroundAgent(
     ptyId: string,
+    expectedAgent: string | null | undefined,
     inputStarted = false
   ): Promise<void> {
     // Why: an agent can exit while a queued send or its delayed Enter waits without replacing the PTY.
@@ -221,7 +222,6 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       ? await this.ptyController.confirmForegroundProcess(ptyId)
       : await this.ptyController?.getForegroundProcess(ptyId)
     const agent = recognizeAgentProcess(foreground)?.agent
-    const expectedAgent = this.getPtyAgent(ptyId)
     if ((agent !== 'claude' && agent !== 'codex') || agent !== expectedAgent) {
       throw new Error(inputStarted ? 'agent_prompt_target_changed' : 'terminal_guard_no_agent')
     }
