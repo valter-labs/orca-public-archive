@@ -5,6 +5,7 @@ import type { AgentType } from '../../../../shared/agent-status-types'
 import type { NativeChatSendClassification } from '../../../../shared/native-chat-slash-commands'
 import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-send'
 import { sendNativeChatMessage } from './native-chat-runtime-send'
+import { appendPendingSendCache, clearPendingSendCacheForTests } from './native-chat-pending'
 import { sendNativeChatMessageWithImageAttachments } from './native-chat-runtime-image-send'
 
 const handle = vi.hoisted(() => ({ cancel: () => {}, settleAfterMs: 0 }))
@@ -25,9 +26,15 @@ function send(
   agent: AgentType,
   classification: NativeChatSendClassification,
   draft: string,
-  imagePaths: string[] = []
+  imagePaths: string[] = [],
+  ptyId = 'pty'
 ) {
-  const callbacks = { rejected: vi.fn(), unconfirmed: vi.fn() }
+  const callbacks = {
+    rejected: vi.fn(),
+    unconfirmed: vi.fn(),
+    setDraft: vi.fn(),
+    setNotice: vi.fn()
+  }
   const { result } = renderHook(() =>
     useNativeChatPtyComposerSend({
       agent,
@@ -36,7 +43,7 @@ function send(
       disabled: false,
       isDispatchingSessionOption: false,
       launchDraftResolved: true,
-      resolveTarget: () => ({ ptyId: 'pty', settings: null }),
+      resolveTarget: () => ({ ptyId, settings: null }),
       classifySend: () => classification,
       onOptimisticSend: () => 'pending-1',
       optimisticSendOutcome: { reject: callbacks.rejected, holdUnconfirmed: callbacks.unconfirmed },
@@ -44,11 +51,11 @@ function send(
       terminalTabId: 'tab',
       trackPendingSend: vi.fn(),
       setHistory: vi.fn(),
-      setDraft: vi.fn(),
+      setDraft: callbacks.setDraft,
       setCaret: vi.fn(),
       clearSkillOrigin: vi.fn(),
       clearImageAttachments: vi.fn(),
-      setNotice: vi.fn()
+      setNotice: callbacks.setNotice
     })
   )
   result.current()
@@ -84,4 +91,34 @@ it.each([
   expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.onWriteRejected).toBeUndefined()
   // Slash commands and Codex keep raw single-line bytes; only Claude chat bodies are framed.
   expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.frameBody).toBeUndefined()
+})
+
+it('refuses a ninth pending remote prompt before writes or draft clearing', () => {
+  clearPendingSendCacheForTests()
+  for (let index = 0; index < 8; index += 1) {
+    appendPendingSendCache(
+      { paneKey: 'tab', agent: 'codex' },
+      {
+        id: `pending-${index}`,
+        text: `uncertain-${index}`,
+        sentAt: index,
+        delivery: 'unconfirmed',
+        reliableDelivery: {
+          requestId: `request-${index}`,
+          environmentId: 'env',
+          runtimeId: 'owner',
+          pairingRevision: 42,
+          terminal: 'terminal',
+          provider: 'codex'
+        }
+      }
+    )
+  }
+  const events = send('codex', 'chat', 'keep this draft', [], 'remote:env@@terminal')
+  expect(events.setDraft).not.toHaveBeenCalled()
+  expect(sendNativeChatMessage).not.toHaveBeenCalled()
+  expect(events.setNotice).toHaveBeenCalledWith(
+    'Resolve or dismiss pending messages before sending more.'
+  )
+  clearPendingSendCacheForTests()
 })

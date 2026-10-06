@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   appendPendingSendCache,
+  canRecordNativeChatPendingSend,
   clearPendingSendCacheForTests,
   isLaunchPromptMessageId,
   isPendingMessageId,
@@ -801,4 +802,33 @@ describe('scope-cache key counts stay bounded (memory-leak regression)', () => {
       1
     )
   })
+})
+
+it('caps new reliable sends without evicting their unresolved text or metadata', () => {
+  clearPendingSendCacheForTests()
+  const scope = { paneKey: 'reliable-limit', agent: 'codex' }
+  for (let index = 0; index < 8; index += 1) {
+    expect(canRecordNativeChatPendingSend(scope)).toBe(true)
+    appendPendingSendCache(scope, {
+      id: `send-${index}`,
+      text: `only copy ${index}`,
+      sentAt: index,
+      delivery: 'unconfirmed',
+      reliableDelivery: {
+        requestId: `request-${index}`,
+        environmentId: 'env',
+        runtimeId: 'owner',
+        pairingRevision: 42,
+        terminal: 'terminal',
+        provider: 'codex'
+      }
+    })
+  }
+  expect(canRecordNativeChatPendingSend(scope)).toBe(false)
+  expect(readPendingSendCache(scope).map((entry) => entry.text)).toEqual(
+    Array.from({ length: 8 }, (_, index) => `only copy ${index}`)
+  )
+  writePendingSendCache(scope, readPendingSendCache(scope).slice(1))
+  expect(canRecordNativeChatPendingSend(scope)).toBe(true)
+  clearPendingSendCacheForTests()
 })

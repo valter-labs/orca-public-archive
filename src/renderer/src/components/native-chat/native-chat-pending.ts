@@ -3,8 +3,9 @@
 // user turn lands in the transcript. Kept separate from the view so the prune
 // rule (match on normalized user-message content) is unit-testable without React.
 
+import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-scope-cache'
+import type { NativeChatReliableDelivery } from './native-chat-reliable-send'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
-import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import type { NativeChatLaunchPrompt } from '@/lib/native-chat-launch-prompt'
 import {
   advancedNativeChatUserContentCounts,
@@ -25,6 +26,8 @@ import {
 export type NativeChatPendingSend = {
   /** Renderer-minted id, unique per send, used as the list key. */
   id: string
+  reliableDelivery?: NativeChatReliableDelivery
+  reliableReceiptAccepted?: true
   /** Definite send outcome; absent while the send is simply awaiting its transcript row. */
   delivery?: 'unconfirmed' | 'rejected'
   /** When a write's acknowledgment was lost, so a remount keeps the original hold deadline. */
@@ -53,6 +56,7 @@ export type NativeChatPendingSendScope = {
 
 const PENDING_SEND_LIMIT = 8
 const pendingSendCache = new Map<string, NativeChatPendingSend[]>()
+const pendingSendListeners = new Map<string, Set<() => void>>()
 let pendingSendCounter = 0
 
 function pendingSendScopeKey(scope: NativeChatPendingSendScope): string {
@@ -63,20 +67,57 @@ export function readPendingSendCache(scope: NativeChatPendingSendScope): NativeC
   return [...(pendingSendCache.get(pendingSendScopeKey(scope)) ?? [])]
 }
 
+export function subscribePendingSendCache(
+  scope: NativeChatPendingSendScope,
+  onChange: () => void
+): () => void {
+  const key = pendingSendScopeKey(scope)
+  const listeners = pendingSendListeners.get(key) ?? new Set()
+  pendingSendListeners.set(key, listeners)
+  listeners.add(onChange)
+  return () => {
+    listeners.delete(onChange)
+    if (listeners.size === 0) {
+      pendingSendListeners.delete(key)
+    }
+  }
+}
+
+export function canRecordNativeChatPendingSend(scope: NativeChatPendingSendScope): boolean {
+  const key = pendingSendScopeKey(scope)
+  return (
+    (pendingSendCache.get(key)?.length ?? 0) < PENDING_SEND_LIMIT &&
+    (pendingSendCache.has(key) || pendingSendCache.size < NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX)
+  )
+}
+
 export function writePendingSendCache(
   scope: NativeChatPendingSendScope,
   pending: NativeChatPendingSend[]
 ): NativeChatPendingSend[] {
-  const next = pending.slice(-PENDING_SEND_LIMIT)
+  // Why: unresolved sends hold the only copy; retain them until transcript reconciliation or dismissal.
+  const reliable = pending.filter((entry) => entry.reliableDelivery)
+  const remaining = Math.max(0, PENDING_SEND_LIMIT - reliable.length)
+  const legacy =
+    remaining > 0 ? pending.filter((entry) => !entry.reliableDelivery).slice(-remaining) : []
+  const next = pending.filter((entry) => reliable.includes(entry) || legacy.includes(entry))
   const key = pendingSendScopeKey(scope)
   if (next.length === 0) {
     pendingSendCache.delete(key)
   } else {
-    // Why: the empty-drain path above clears keys on the normal confirm flow,
-    // but a pane closed with an unconfirmed send (agent crash / early close)
-    // would strand its entry forever. LRU-bound the key count too.
-    setBoundedScopeCacheEntry(pendingSendCache, key, next)
+    // Why: changing panes must not evict unresolved delivery evidence.
+    pendingSendCache.set(key, next)
+    while (pendingSendCache.size > NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX) {
+      const evictable = [...pendingSendCache].find(
+        ([, entries]) => !entries.some((entry) => entry.reliableDelivery)
+      )
+      if (!evictable) {
+        break
+      }
+      pendingSendCache.delete(evictable[0])
+    }
   }
+  pendingSendListeners.get(key)?.forEach((listener) => listener())
   return [...next]
 }
 
@@ -87,7 +128,10 @@ export function appendPendingSendCache(
   const contentKey = nativeChatPendingContentKey(entry)
   // Why: a resend replaces its failed copy; kept, that copy would claim the resend's row and pin it.
   const existing = readPendingSendCache(scope).filter(
-    (candidate) => !candidate.delivery || nativeChatPendingContentKey(candidate) !== contentKey
+    (candidate) =>
+      (candidate.reliableDelivery && candidate.delivery !== 'rejected') ||
+      !candidate.delivery ||
+      nativeChatPendingContentKey(candidate) !== contentKey
   )
   const next = assignNativeChatPendingOccurrence(existing, entry)
   return writePendingSendCache(scope, [...existing, next])
@@ -207,13 +251,19 @@ export function prunePendingSends(
     stillOpen,
     gluedCandidateRows(messages, stillOpen, advancedNativeChatUserRows)
   )
-  const next = pending.filter((entry, index) => {
-    if (!exactKeep[index]) {
-      return false
-    }
-    const openIndex = stillOpen.indexOf(entry)
-    return openIndex === -1 || !gluedRepresented.has(openIndex)
-  })
+  const reliable = pending.filter((entry) => entry.reliableDelivery)
+  const remaining = Math.max(0, PENDING_SEND_LIMIT - reliable.length)
+  const legacy =
+    remaining > 0 ? pending.filter((entry) => !entry.reliableDelivery).slice(-remaining) : []
+  const next = pending
+    .filter((entry) => reliable.includes(entry) || legacy.includes(entry))
+    .filter((entry, index) => {
+      if (!exactKeep[index]) {
+        return false
+      }
+      const openIndex = stillOpen.indexOf(entry)
+      return openIndex === -1 || !gluedRepresented.has(openIndex)
+    })
   return next.length === pending.length ? pending : next
 }
 

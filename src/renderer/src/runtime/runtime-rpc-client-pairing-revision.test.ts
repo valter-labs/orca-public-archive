@@ -62,3 +62,48 @@ it('captures the pairing revision before awaiting the compatibility probe', asyn
     expectedEnvironmentPairingRevision: 10
   })
 })
+
+it('forwards only the durable UUID and preserves the captured owner fences', async () => {
+  const requestId = '3139988a-2b58-45af-bacb-1e6c518aa955'
+  runtimeEnvironmentCall.mockResolvedValue({
+    id: 'send',
+    ok: true,
+    result: { accepted: true },
+    _meta: { runtimeId: 'owner' }
+  })
+  await callRuntimeRpc(
+    { kind: 'environment', environmentId: 'env' },
+    'terminal.send',
+    { text: 'hello' },
+    {
+      skipCompatibilityCheck: true,
+      orchestrationRequestId: requestId,
+      expectedEnvironmentPairingRevision: 42,
+      expectedEnvironmentRuntimeId: 'owner'
+    }
+  )
+  expect(runtimeEnvironmentCall).toHaveBeenCalledWith(
+    expect.objectContaining({
+      orchestrationRequestId: requestId,
+      expectedEnvironmentPairingRevision: 42,
+      expectedEnvironmentRuntimeId: 'owner'
+    })
+  )
+  runtimeEnvironmentCall.mockResolvedValue({
+    id: 'send',
+    ok: true,
+    result: { accepted: true },
+    _meta: { runtimeId: 'replacement' }
+  })
+  await expect(
+    callRuntimeRpc(
+      { kind: 'environment', environmentId: 'env' },
+      'terminal.send',
+      {},
+      {
+        skipCompatibilityCheck: true,
+        expectedEnvironmentRuntimeId: 'owner'
+      }
+    )
+  ).rejects.toThrow('runtime_environment_runtime_changed')
+})

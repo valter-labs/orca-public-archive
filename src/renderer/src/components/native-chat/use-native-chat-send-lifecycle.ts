@@ -24,7 +24,7 @@ export function useNativeChatSendLifecycle(
         clearTimeout(cleanupTimer)
       }
       handle.cancel()
-      if (pendingId) {
+      if (pendingId && !handle.retainPendingOnCancel?.()) {
         onPendingSendCanceled?.(pendingId)
       }
     }

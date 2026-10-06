@@ -92,4 +92,17 @@ describe('useNativeChatSendLifecycle', () => {
       resolveSettled()
     })
   })
+  it('keeps an already started reliable echo when the target changes or unmounts', () => {
+    const onPendingSendCanceled = vi.fn()
+    const reliable = { ...handle(), retainPendingOnCancel: () => true }
+    const { result, rerender, unmount } = renderHook(
+      ({ targetPtyId }) => useNativeChatSendLifecycle('tab-1', targetPtyId, onPendingSendCanceled),
+      { initialProps: { targetPtyId: 'pty-1' } }
+    )
+    act(() => result.current.trackPendingSend(reliable, 'pending-1'))
+    rerender({ targetPtyId: 'pty-2' })
+    unmount()
+    expect(reliable.cancel).toHaveBeenCalledOnce()
+    expect(onPendingSendCanceled).not.toHaveBeenCalled()
+  })
 })

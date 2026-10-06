@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  recoverNativeChatReliableDelivery,
+  type NativeChatReliableDelivery
+} from './native-chat-reliable-send'
 import { translate } from '@/i18n/i18n'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
@@ -7,6 +11,7 @@ import {
   pendingSendsAsMessages,
   prunePendingSends,
   readPendingSendCache,
+  subscribePendingSendCache,
   writePendingSendCache,
   type NativeChatPendingSend
 } from './native-chat-pending'
@@ -26,7 +31,11 @@ export function useNativeChatPendingDelivery(args: {
   const { paneKey, agent, messages } = args
   const scope = useMemo(() => ({ paneKey, agent }), [paneKey, agent])
   const [pending, setPending] = useState(() => readPendingSendCache(scope))
-  useEffect(() => setPending(readPendingSendCache(scope)), [scope])
+  useEffect(() => {
+    setPending(readPendingSendCache(scope))
+    // Why: a started send can finish through callbacks owned by an unmounted composer.
+    return subscribePendingSendCache(scope, () => setPending(readPendingSendCache(scope)))
+  }, [scope])
   const save = useCallback(
     (update: (entries: NativeChatPendingSend[]) => NativeChatPendingSend[]) => {
       const current = readPendingSendCache(scope)
@@ -69,12 +78,73 @@ export function useNativeChatPendingDelivery(args: {
       ),
     [save]
   )
+  const beginReliable = useCallback(
+    (id: string, binding: NativeChatReliableDelivery) =>
+      save((entries) =>
+        entries.map((entry) => (entry.id === id ? { ...entry, reliableDelivery: binding } : entry))
+      ),
+    [save]
+  )
+  const received = useCallback(
+    (id: string, binding: NativeChatReliableDelivery) =>
+      save((entries) =>
+        entries.map((entry) =>
+          entry.id === id
+            ? {
+                ...entry,
+                reliableDelivery: binding,
+                reliableReceiptAccepted: true,
+                delivery: undefined,
+                writeUnconfirmedAt: undefined
+              }
+            : entry
+        )
+      ),
+    [save]
+  )
+  useEffect(() => {
+    const recovering = new Set<string>()
+    const recover = () => {
+      for (const entry of readPendingSendCache(scope)) {
+        if (
+          !entry.reliableDelivery ||
+          entry.reliableReceiptAccepted ||
+          entry.delivery === 'rejected' ||
+          recovering.has(entry.id)
+        ) {
+          continue
+        }
+        recovering.add(entry.id)
+        // Why: a reconnect can read the original receipt but must never issue terminal.send again.
+        void recoverNativeChatReliableDelivery(entry.reliableDelivery)
+          .then((receipt) => {
+            if (receipt?.rejected) {
+              reject(entry.id)
+            } else if (receipt && !receipt.rejected) {
+              received(entry.id, receipt.binding)
+            }
+          })
+          .catch(() => {})
+          .finally(() => recovering.delete(entry.id))
+      }
+    }
+    recover()
+    return window.api?.runtimeEnvironments?.onStatusChanged?.((snapshot) => {
+      if (snapshot.verification === 'verified') {
+        recover()
+      }
+    })
+  }, [scope, received, reject])
   const holdUnconfirmed = useCallback(
     (id: string) =>
       save((entries) =>
         entries.map((entry) =>
           entry.id === id && !entry.delivery && entry.writeUnconfirmedAt === undefined
-            ? { ...entry, writeUnconfirmedAt: Date.now() }
+            ? {
+                ...entry,
+                writeUnconfirmedAt: Date.now(),
+                ...(entry.reliableDelivery ? { delivery: 'unconfirmed' as const } : {})
+              }
             : entry
         )
       ),
@@ -82,7 +152,7 @@ export function useNativeChatPendingDelivery(args: {
   )
   // Why keep outcomes: Stop cannot affect a settled failure, and its bubble holds the only copy.
   const clear = useCallback(
-    () => save((entries) => entries.filter((entry) => entry.delivery)),
+    () => save((entries) => entries.filter((entry) => entry.delivery || entry.reliableDelivery)),
     [save]
   )
 
@@ -132,17 +202,21 @@ export function useNativeChatPendingDelivery(args: {
   }, [nextHoldDeadline, messages, save])
 
   const notices = useMemo(() => {
-    if (!pending.some((entry) => entry.delivery)) {
+    if (!pending.some((entry) => entry.delivery || entry.reliableReceiptAccepted)) {
       return NO_NOTICES
     }
     const result = new Map<string, NativeChatDeliveryNotice>()
     for (const entry of pending) {
-      if (!entry.delivery) {
+      if (!entry.delivery && !entry.reliableReceiptAccepted) {
         continue
       }
       result.set(`pending:${entry.id}`, {
-        text:
-          entry.delivery === 'rejected'
+        text: entry.reliableReceiptAccepted
+          ? translate(
+              'components.native-chat.receivedByServer',
+              'Received by server — waiting for the conversation'
+            )
+          : entry.delivery === 'rejected'
             ? translate('components.native-chat.messageNotSent', 'Message not sent')
             : translate(
                 'components.native-chat.deliveryUnconfirmed',
@@ -153,5 +227,15 @@ export function useNativeChatPendingDelivery(args: {
     }
     return result
   }, [pending, cancel])
-  return { pending, record, cancel, reject, holdUnconfirmed, clear, notices }
+  return {
+    pending,
+    record,
+    cancel,
+    reject,
+    holdUnconfirmed,
+    beginReliable,
+    received,
+    clear,
+    notices
+  }
 }

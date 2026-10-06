@@ -222,4 +222,6 @@ export type RuntimeAgentPromptWriteOptions = Omit<RuntimeTerminalWriteOptions, '
   observationTimeoutMs?: number
   requestId?: string
   onInputAccepted?: (send: RuntimeTerminalSend) => void
+  /** Empty the agent's unsubmitted input line, inside the same guarded submission, before pasting. */
+  clearUnsubmittedInput?: boolean
 }

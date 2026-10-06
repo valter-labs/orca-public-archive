@@ -1,3 +1,5 @@
+import { canRecordNativeChatPendingSend } from './native-chat-pending'
+import { sendNativeChatReliableMessage } from './native-chat-reliable-send'
 import { useCallback, type Dispatch, type SetStateAction } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
@@ -22,6 +24,7 @@ import type { NativeChatOptimisticSendOutcome } from './native-chat-composer-typ
 
 export function useNativeChatPtyComposerSend(args: {
   agent: AgentType
+  paneKey?: string
   draft: string
   imageAttachments: readonly { path: string }[]
   disabled: boolean
@@ -59,6 +62,17 @@ export function useNativeChatPtyComposerSend(args: {
       return
     }
     const classification = args.classifySend(text)
+    if (
+      classification === 'chat' &&
+      nativeChatComposerTargetIsRemote(target.ptyId) &&
+      !canRecordNativeChatPendingSend({
+        paneKey: args.paneKey ?? args.terminalTabId,
+        agent: args.agent
+      })
+    ) {
+      args.setNotice('Resolve or dismiss pending messages before sending more.')
+      return
+    }
     const { sendOptions: launchSendOptions } = resolveNativeChatLaunchDraftSend({
       launchDraft: args.launchDraft,
       launchDraftResolved: args.launchDraftResolved,
@@ -98,6 +112,21 @@ export function useNativeChatPtyComposerSend(args: {
         text,
         imagePaths,
         sendOptions
+      )
+    } else if (
+      classification === 'chat' &&
+      nativeChatComposerTargetIsRemote(target.ptyId) &&
+      (args.agent === 'claude' || args.agent === 'codex')
+    ) {
+      pendingHandle = sendNativeChatReliableMessage(
+        target.ptyId,
+        text,
+        args.agent === 'claude' ? 'claude' : 'codex',
+        {
+          pendingId: () => pendingId,
+          outcome: args.optimisticSendOutcome,
+          onError: args.setNotice
+        }
       )
     } else if (text.trim().length > 0) {
       pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)

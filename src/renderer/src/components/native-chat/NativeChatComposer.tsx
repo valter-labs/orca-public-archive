@@ -213,7 +213,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         structuredTransport?.runtimeEnvironmentId
       ]),
       agent,
-      disabled,
+      disabled: Boolean(structuredTransport) && disabled,
       resolveAttachmentOwner,
       attachResolvedPaths,
       beginPendingImageAttachment,
@@ -262,6 +262,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     const sendPty = useNativeChatPtyComposerSend({
       agent,
+      paneKey,
       draft,
       imageAttachments,
       disabled,
@@ -363,7 +364,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         composerScopeKey={paneKey}
         textareaRef={textareaRef}
         draft={draft}
-        disabled={disabled}
+        disabled={Boolean(structuredTransport) && disabled}
         hasPty={hasPty}
         canSend={canSend}
         autocomplete={autocomplete}

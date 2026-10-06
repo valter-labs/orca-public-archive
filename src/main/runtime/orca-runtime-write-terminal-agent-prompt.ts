@@ -14,6 +14,7 @@ import {
   getTerminalPasteIngestMs,
   resolveAgentPromptSubmitDelayForAgent
 } from '../../shared/agent-prompt-injection'
+import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../shared/agent-tui-input-clear'
 import type { AgentPromptWaitTextCache } from './agent-prompt-submission-verification'
 import {
   isTerminalSendSettlementAgent,
@@ -58,6 +59,13 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
         permissionBaseline,
         this.getAgentPromptActivity(handle, ptyId)
       )
+      // Why: guarded, queued clears cannot erase an earlier prompt before its Enter.
+      if (
+        options.clearUnsubmittedInput &&
+        !this.ptyController?.write(ptyId, AGENT_TUI_CLEAR_INPUT_MAX, options.inputKind)
+      ) {
+        throw new Error('terminal_not_writable')
+      }
       // Keep the bracketed paste frame in one PTY write; Claude's composer can drop the
       // beginning when a large frame is split into independently processed chunks.
       renderGate?.arm()
@@ -70,12 +78,14 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       throw error
     }
 
+    // Why: disconnect after durable input starts must not strand the body without Enter.
+    const submitSignal = options.acceptQueued && options.requestId ? undefined : options.signal
     if (submitWithPaste) {
       // The Enter was part of the paste frame; waiting here would only delay receipt settlement.
       renderGate?.dispose()
     } else if (renderGate) {
       try {
-        await waitForAgentPromptPromise(renderGate.wait(), options.signal)
+        await waitForAgentPromptPromise(renderGate.wait(), submitSignal)
       } finally {
         renderGate.dispose()
       }
@@ -84,9 +94,9 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       const submitDelayMs = options.promptForSchedule
         ? resolveAgentPromptSubmitDelayForAgent(writeHostPlatform, options.promptForSchedule, agent)
         : getAgentPromptSubmitDelayMs(writeHostPlatform, pasteByteLength)
-      await waitForAgentPromptDelay(submitDelayMs, options.signal)
+      await waitForAgentPromptDelay(submitDelayMs, submitSignal)
     }
-    assertAgentPromptRequestActive(options.signal)
+    assertAgentPromptRequestActive(submitSignal)
     this.assertAgentPromptGeneration(ptyId, generation)
     if (!submitWithPaste) {
       try {
@@ -97,7 +107,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
         }
         throw error
       }
-      assertAgentPromptRequestActive(options.signal)
+      assertAgentPromptRequestActive(submitSignal)
       this.assertAgentPromptGeneration(ptyId, generation)
     }
     const baseline = preSubmitBaseline ?? this.getAgentPromptActivity(handle, ptyId, waitTextCache)
