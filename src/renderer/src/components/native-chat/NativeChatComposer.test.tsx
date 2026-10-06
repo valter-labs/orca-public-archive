@@ -857,19 +857,22 @@ describe('NativeChatComposer', () => {
     expect(mocks.sendNativeChatMessageVerified).not.toHaveBeenCalled()
     expect(onSwitchToTerminal).toHaveBeenCalledOnce()
   })
-  it('keeps the editor editable offline while preventing a send from clearing the draft', () => {
-    render(
-      <NativeChatComposer
-        terminalTabId="tab-offline"
-        paneKey="pane-offline"
-        targetPtyId={null}
-        agent="codex"
-        canSend={false}
-      />
-    )
-    expect(mocks.fieldProps).toMatchObject({ disabled: false })
-    expect(mocks.fieldProps?.sendButtonDisabled).toBe(true)
-    mocks.fieldProps?.onSend?.()
-    expect(mocks.setDraft).not.toHaveBeenCalled()
-  })
+  it.each([null, 'remote:env-a@@terminal%3A1'])(
+    'keeps the editor editable offline with retained PTY %s while preventing a send from clearing the draft',
+    (targetPtyId) => {
+      render(
+        <NativeChatComposer
+          terminalTabId="tab-offline"
+          paneKey="pane-offline"
+          targetPtyId={targetPtyId}
+          agent="codex"
+          canSend={false}
+        />
+      )
+      expect(mocks.fieldProps).toMatchObject({ disabled: false })
+      expect(mocks.fieldProps?.sendButtonDisabled).toBe(true)
+      mocks.fieldProps?.onSend?.()
+      expect(mocks.setDraft).not.toHaveBeenCalled()
+    }
+  )
 })
