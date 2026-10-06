@@ -37,9 +37,11 @@ Drafts and pending copies are held in memory, not saved to disk. Reconnecting du
 
 ### Developer regression check
 
-From the repository root, use a built desktop candidate, a private pairing file, and an existing Claude or Codex session prepared for this check on your remote server:
+Use **Node 24**, a private pairing file, and an existing Claude or Codex session prepared for this check on your remote server. From the repository root, prepare the Electron runtime and build a desktop candidate with E2E instrumentation; the script needs the exposed store to check startup readiness:
 
 ```sh
+pnpm run ensure:electron-runtime
+VITE_EXPOSE_STORE=true pnpm exec electron-vite build --mode e2e
 pnpm exec jiti config/scripts/live-remote-native-chat-reliable-send.ts <private-pairing-file> <codex|claude> <session-UUID> <transcript-path|-> <worktree-id> <tab-label>
 ```
 
