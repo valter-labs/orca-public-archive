@@ -459,6 +459,8 @@ describe('OrcaRuntimeService', () => {
           : 'Hooks need review. Press enter to confirm\n',
         Date.now() + 1000
       )
+      // Settle the title's background refresh before measuring the status query alone.
+      await runtime.refreshPtyForegroundAgentFromController('pty-1')
       getForegroundProcess.mockClear()
       confirmForegroundProcess.mockClear()
 

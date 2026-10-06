@@ -123,11 +123,31 @@ export class RuntimePtyForegroundAgent {
     if (!controller || !pty?.connected || pty.launchAgent) {
       return false
     }
+    const incarnationId = pty.incarnationId
+    const isCurrent = (): boolean =>
+      this.deps.getController() === controller &&
+      this.deps.getPty(ptyId) === pty &&
+      pty.incarnationId === incarnationId &&
+      pty.connected &&
+      !pty.launchAgent
     const result = await this.read(ptyId, afterTitle)
-    if (!result || result.controller !== this.deps.getController() || !result.available) {
+    if (!result || result.controller !== controller || !result.available || !isCurrent()) {
       return false
     }
-    const agent = result.process ? (recognizeAgentProcess(result.process)?.agent ?? null) : null
+    let process = result.process
+    // A cache older than 1s returns a shell during async discovery; confirm before clearing identity.
+    // Remove when provider reads await discovery instead of returning that fallback.
+    if (process && !recognizeAgentProcess(process) && controller.confirmForegroundProcess) {
+      try {
+        process = await controller.confirmForegroundProcess(ptyId)
+      } catch {
+        return false
+      }
+      if (!isCurrent()) {
+        return false
+      }
+    }
+    const agent = process ? (recognizeAgentProcess(process)?.agent ?? null) : null
     if (pty.foregroundAgent === agent) {
       return false
     }
