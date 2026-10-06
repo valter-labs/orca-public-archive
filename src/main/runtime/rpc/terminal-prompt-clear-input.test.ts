@@ -121,11 +121,13 @@ describe('terminal.send clearUnsubmittedInput', () => {
           mutation: { replayed: false }
         }
       })
-      expect(harness.writes).toHaveLength(3)
-      expect(harness.writes[0]).toBe(AGENT_TUI_CLEAR_INPUT_MAX)
-      expect(harness.writes[1]).toContain('line one\nline two')
-      expect(harness.writes[1]).not.toContain('\u0015')
-      expect(harness.writes[2]).toBe('\r')
+      const clearWrites =
+        agent === 'claude' ? [...AGENT_TUI_CLEAR_INPUT_MAX] : [AGENT_TUI_CLEAR_INPUT_MAX]
+      expect(harness.writes.slice(0, clearWrites.length)).toEqual(clearWrites)
+      expect(harness.writes).toHaveLength(clearWrites.length + 2)
+      expect(harness.writes[clearWrites.length]).toContain('line one\nline two')
+      expect(harness.writes[clearWrites.length]).not.toContain('\u0015')
+      expect(harness.writes.at(-1)).toBe('\r')
       harness.db.close()
     }
   )

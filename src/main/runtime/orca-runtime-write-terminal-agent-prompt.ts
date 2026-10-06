@@ -16,6 +16,7 @@ import {
 } from '../../shared/agent-prompt-injection'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../shared/agent-tui-input-clear'
+import { AGENT_TUI_COMMAND_KEY_INTERVAL_MS } from '../../shared/agent-tui-command-typing'
 import type { AgentPromptWaitTextCache } from './agent-prompt-submission-verification'
 import {
   isTerminalSendSettlementAgent,
@@ -45,7 +46,9 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     const submitWithPaste = agentPromptSubmitJoinsPasteFrame(expectedAgent)
     const pasteByteLength = Buffer.byteLength(pastePayload, 'utf8')
     const pasteIngestMs = getTerminalPasteIngestMs(writeHostPlatform, pasteByteLength)
-    const renderGate = this.createAgentPromptRenderGate(ptyId, pasteIngestMs)
+    let renderGate: ReturnType<typeof this.createAgentPromptRenderGate> = null
+    // Why: disconnect after durable input starts must not strand the body without Enter.
+    const submitSignal = options.acceptQueued && options.requestId ? undefined : options.signal
     const waitTextCache: AgentPromptWaitTextCache = {}
     const preSubmitBaseline = submitWithPaste
       ? this.getAgentPromptActivity(handle, ptyId, waitTextCache)
@@ -63,15 +66,45 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
         permissionBaseline,
         this.getAgentPromptActivity(handle, ptyId)
       )
-      // Why: guarded, queued clears cannot erase an earlier prompt before its Enter.
-      if (
-        options.clearUnsubmittedInput &&
-        !this.ptyController?.write(ptyId, AGENT_TUI_CLEAR_INPUT_MAX, options.inputKind)
-      ) {
-        throw new Error('terminal_not_writable')
+      if (options.clearUnsubmittedInput) {
+        if (expectedAgent === 'claude') {
+          // Why: batched clears leave Claude 2.1.291's next prompt unsubmitted; per-key clears do not.
+          // Keep controls as keystrokes until Claude accepts the full clear burst as key events.
+          for (const [index, key] of [...AGENT_TUI_CLEAR_INPUT_MAX].entries()) {
+            if (index > 0) {
+              await this.assertChatPromptForegroundAgent(ptyId, expectedAgent, true)
+              await options.beforeWrite?.(ptyId)
+              assertAgentPromptRequestActive(submitSignal)
+              this.assertAgentPromptGeneration(ptyId, generation)
+              this.assertAgentPromptPermissionSafe(
+                permissionBaseline,
+                this.getAgentPromptActivity(handle, ptyId)
+              )
+            }
+            if (!this.ptyController?.write(ptyId, key, options.inputKind)) {
+              throw new Error('terminal_not_writable')
+            }
+            if (index < AGENT_TUI_CLEAR_INPUT_MAX.length - 1) {
+              await waitForAgentPromptDelay(AGENT_TUI_COMMAND_KEY_INTERVAL_MS, submitSignal)
+            }
+          }
+          await this.assertChatPromptForegroundAgent(ptyId, expectedAgent, true)
+          await options.beforeWrite?.(ptyId)
+          assertAgentPromptRequestActive(submitSignal)
+          this.assertAgentPromptGeneration(ptyId, generation)
+          this.assertAgentPromptPermissionSafe(
+            permissionBaseline,
+            this.getAgentPromptActivity(handle, ptyId)
+          )
+        } else if (
+          !this.ptyController?.write(ptyId, AGENT_TUI_CLEAR_INPUT_MAX, options.inputKind)
+        ) {
+          throw new Error('terminal_not_writable')
+        }
       }
       // Keep the bracketed paste frame in one PTY write; Claude's composer can drop the
       // beginning when a large frame is split into independently processed chunks.
+      renderGate = this.createAgentPromptRenderGate(ptyId, pasteIngestMs)
       renderGate?.arm()
       const initialWrite = submitWithPaste ? pastePayload + AGENT_PROMPT_SUBMIT : pastePayload
       if (!this.ptyController?.write(ptyId, initialWrite, options.inputKind)) {
@@ -82,8 +115,6 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       throw error
     }
 
-    // Why: disconnect after durable input starts must not strand the body without Enter.
-    const submitSignal = options.acceptQueued && options.requestId ? undefined : options.signal
     if (submitWithPaste) {
       // The Enter was part of the paste frame; waiting here would only delay receipt settlement.
       renderGate?.dispose()
