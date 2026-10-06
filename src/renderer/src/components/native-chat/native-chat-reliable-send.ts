@@ -119,11 +119,24 @@ export function sendNativeChatReliableMessage(
 ): NativeChatSendHandle {
   const environmentId = getRemoteRuntimePtyEnvironmentId(ptyId)
   const terminal = getRemoteRuntimeTerminalHandle(ptyId)
-  const environment = useAppStore
-    .getState()
-    .runtimeEnvironments.find((entry) => entry.id === environmentId)
+  const state = useAppStore.getState()
+  const environment = state.runtimeEnvironments.find((entry) => entry.id === environmentId)
   const pairingRevision = environmentId ? getRuntimeEnvironmentRevision(environmentId) : undefined
-  const runtimeId = environment?.runtimeId
+  const snapshot = environmentId
+    ? state.runtimeStatusByEnvironmentId?.get(environmentId)?.snapshot
+    : undefined
+  // Why: the first verified pairing saves its identity before the renderer catalog is relisted.
+  // Only evidence from this ready pairing can fill the gap; retained offline status cannot.
+  const runtimeId =
+    environment?.runtimeId ??
+    (environment &&
+    snapshot?.environmentId === environmentId &&
+    snapshot.pairingRevision === pairingRevision &&
+    snapshot.verification === 'verified' &&
+    snapshot.transport === 'ready' &&
+    !snapshot.retired
+      ? snapshot.status?.runtimeId
+      : undefined)
   const requestId = createUuidV4()
   let started = false
   let cancelled = false

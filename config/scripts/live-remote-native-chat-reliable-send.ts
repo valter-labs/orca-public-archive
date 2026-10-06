@@ -187,7 +187,12 @@ try {
   await expect(tab).toHaveCount(1, { timeout: 30_000 })
   await tab.click()
   stage = 'chat-toggle-ui'
-  await page.getByRole('button', { name: 'Show chat view', exact: true }).click({ timeout: 30_000 })
+  const showChat = page.getByRole('button', { name: 'Show chat view', exact: true })
+  const showTerminal = page.getByRole('button', { name: 'Show terminal view', exact: true })
+  await expect(showChat.or(showTerminal)).toBeVisible({ timeout: 30_000 })
+  if (await showChat.isVisible()) {
+    await showChat.click()
+  }
   const editor = page.locator('[role="textbox"][contenteditable="true"][aria-multiline="true"]')
   await expect(editor).toHaveCount(1)
   stage = 'type-ui'
