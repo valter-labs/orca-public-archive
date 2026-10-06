@@ -49,6 +49,8 @@ The check launches a hidden Electron instance with an isolated home and profile,
 
 This delivery path requires `terminal.prompt-delivery.clear-input.v1` alongside prompt receipts: the server accepts the request UUID before clearing unfinished terminal input for a desktop Claude or Codex prompt. Clients refuse unsupported servers before writing input.
 
+Claude can leave the next prompt unsubmitted after a batched clear, so the server clears unfinished input one key at a time using the existing 16 ms cadence. The full bounded clear takes at least **2.512 seconds**, plus process checks before each later key and before submission; the receipt can therefore take several seconds while typing stays local. The prompt body remains one bracketed paste followed by one Enter, and replaying the same request never repeats those input effects.
+
 ## Questions from the agent
 
 When Claude shows an **AskUserQuestion** (or similar structured permission/question card), Chat UI should render the question card in the transcript so you can answer from the composer path instead of treating it as a collapsed tool call. Confirm with **Submit** on the card. That includes agents running on a paired [Remote Orca Server](/docs/remote-servers) / headless host — not only local panes.
