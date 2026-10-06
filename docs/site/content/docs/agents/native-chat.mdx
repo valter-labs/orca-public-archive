@@ -35,6 +35,18 @@ Orca retains up to **8 pending messages per pane** across **128 pane/agent group
 
 Drafts and pending copies are held in memory, not saved to disk. Reconnecting during the current app session is supported; retaining this local text after quitting or crashing is not guaranteed. Attachment sends do not have this receipt-based recovery.
 
+### Developer regression check
+
+From the repository root, use a built desktop candidate, a private pairing file, and an existing Claude or Codex session prepared for this check on your remote server:
+
+```sh
+pnpm exec jiti config/scripts/live-remote-native-chat-reliable-send.ts <private-pairing-file> <codex|claude> <session-UUID> <transcript-path|-> <worktree-id> <tab-label>
+```
+
+The check launches a hidden Electron instance with an isolated home and profile, types a unique probe through Chat UI, clicks **Send**, and requires exactly one matching user message and one assistant reply in the server's transcript. It does not create an agent session; the result reports whether the run passed.
+
+This delivery path requires `terminal.prompt-delivery.clear-input.v1` alongside prompt receipts: the server accepts the request UUID before clearing unfinished terminal input for a desktop Claude or Codex prompt. Clients refuse unsupported servers before writing input.
+
 ## Questions from the agent
 
 When Claude shows an **AskUserQuestion** (or similar structured permission/question card), Chat UI should render the question card in the transcript so you can answer from the composer path instead of treating it as a collapsed tool call. Confirm with **Submit** on the card. That includes agents running on a paired [Remote Orca Server](/docs/remote-servers) / headless host — not only local panes.
