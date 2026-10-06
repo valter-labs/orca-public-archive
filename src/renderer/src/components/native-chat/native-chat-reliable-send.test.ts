@@ -128,18 +128,16 @@ it('cancels preflight without writing, including cancellation by a command', asy
         release = done
       })
   )
-  const handle = sendNativeChatReliableMessage(
-    'remote:env@@terminal',
-    'cancel me',
-    'codex',
-    callbacks()
-  )
+  const events = callbacks()
+  const handle = sendNativeChatReliableMessage('remote:env@@terminal', 'cancel me', 'codex', events)
   await vi.waitFor(() => expect(mocks.capability).toHaveBeenCalledOnce())
   cancelNativeChatPtySends('remote:env@@terminal')
   release()
   await handle.settled
   await Promise.resolve()
   expect(mocks.call).not.toHaveBeenCalled()
+  expect(events.outcome.reject).toHaveBeenCalledWith('pending')
+  expect(handle.retainPendingOnCancel?.()).toBe(true)
 })
 it('serializes two rapid messages through completion of the first RPC', async () => {
   let reject!: (error: Error) => void
@@ -187,5 +185,65 @@ it('reports a missing runtime owner after the composer has recorded the echo', a
   )
   await handle.settled
   expect(events.outcome.reject).toHaveBeenCalledWith('pending')
+  expect(mocks.call).not.toHaveBeenCalled()
+})
+
+it('reads newer stages without granting acceptance to an unknown stage alone', () => {
+  const original = receipt()
+  expect(
+    readNativeChatReliableReceipt(
+      {
+        send: {
+          ...original.send,
+          prompt: { ...original.send.prompt, stages: ['input_accepted', 'new_host_stage'] }
+        }
+      },
+      binding
+    )
+  ).toMatchObject({ rejected: false })
+  expect(
+    readNativeChatReliableReceipt(
+      {
+        send: { ...original.send, prompt: { ...original.send.prompt, stages: ['new_host_stage'] } }
+      },
+      binding
+    )
+  ).toBeNull()
+  expect(
+    readNativeChatReliableReceipt(
+      {
+        send: {
+          ...original.send,
+          prompt: { ...original.send.prompt, stages: ['input_accepted', 42] }
+        }
+      },
+      binding
+    )
+  ).toBeNull()
+})
+
+it('marks both preflight and not-yet-started queued cancellation as definitely unsent', async () => {
+  let release!: () => void
+  mocks.capability.mockImplementationOnce(
+    () =>
+      new Promise<void>((done) => {
+        release = done
+      })
+  )
+  const firstEvents = callbacks()
+  const secondEvents = callbacks()
+  const first = sendNativeChatReliableMessage('remote:env@@terminal', 'first', 'codex', firstEvents)
+  const second = sendNativeChatReliableMessage(
+    'remote:env@@terminal',
+    'second',
+    'codex',
+    secondEvents
+  )
+  await vi.waitFor(() => expect(mocks.capability).toHaveBeenCalledOnce())
+  cancelNativeChatPtySends('remote:env@@terminal')
+  release()
+  await Promise.all([first.settled, second.settled])
+  expect(firstEvents.outcome.reject).toHaveBeenCalledWith('pending')
+  expect(secondEvents.outcome.reject).toHaveBeenCalledWith('pending')
   expect(mocks.call).not.toHaveBeenCalled()
 })

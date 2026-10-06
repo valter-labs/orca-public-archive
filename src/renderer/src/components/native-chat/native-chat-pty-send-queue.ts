@@ -21,6 +21,7 @@ export type EnqueueNativeChatPtySendOptions = {
    */
   onCancelUnsubmitted?: () => void
   canCancel?: () => boolean
+  onCancelled?: () => void
 }
 
 type PtyQueueState = {
@@ -166,6 +167,7 @@ export function enqueueNativeChatPtySend(
         return
       }
       cancelled = true
+      options?.onCancelled?.()
       for (const timer of timers) {
         clearTimeout(timer)
       }

@@ -14,6 +14,7 @@ import {
   getTerminalPasteIngestMs,
   resolveAgentPromptSubmitDelayForAgent
 } from '../../shared/agent-prompt-injection'
+import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../shared/agent-tui-input-clear'
 import type { AgentPromptWaitTextCache } from './agent-prompt-submission-verification'
 import {
@@ -52,6 +53,9 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     try {
       assertAgentPromptRequestActive(options.signal)
       this.assertAgentPromptGeneration(ptyId, generation)
+      if (options.clearUnsubmittedInput) {
+        await this.assertChatPromptForegroundAgent(ptyId)
+      }
       await options.beforeWrite?.(ptyId)
       assertAgentPromptRequestActive(options.signal)
       this.assertAgentPromptGeneration(ptyId, generation)
@@ -100,6 +104,9 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     this.assertAgentPromptGeneration(ptyId, generation)
     if (!submitWithPaste) {
       try {
+        if (options.clearUnsubmittedInput) {
+          await this.assertChatPromptForegroundAgent(ptyId, true)
+        }
         await options.beforeWrite?.(ptyId)
       } catch (error) {
         if (options.suffixFailureError) {
@@ -203,6 +210,20 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
         }
       }
       throw error
+    }
+  }
+  private async assertChatPromptForegroundAgent(
+    ptyId: string,
+    inputStarted = false
+  ): Promise<void> {
+    // Why: an agent can exit while a queued send or its delayed Enter waits without replacing the PTY.
+    const foreground = this.ptyController?.confirmForegroundProcess
+      ? await this.ptyController.confirmForegroundProcess(ptyId)
+      : await this.ptyController?.getForegroundProcess(ptyId)
+    const agent = recognizeAgentProcess(foreground)?.agent
+    const expectedAgent = this.getPtyAgent(ptyId)
+    if ((agent !== 'claude' && agent !== 'codex') || agent !== expectedAgent) {
+      throw new Error(inputStarted ? 'agent_prompt_target_changed' : 'terminal_guard_no_agent')
     }
   }
 }

@@ -33,7 +33,7 @@ const SendReceipt = z.object({
     prompt: z
       .object({
         requestId: z.string(),
-        stages: z.array(z.enum(['input_accepted', 'turn_started'])),
+        stages: z.array(z.string()),
         provider: z.string(),
         observation: z.string(),
         processIncarnation: z.string().min(1),
@@ -206,7 +206,16 @@ export function sendNativeChatReliableMessage(
         }
       })()
     },
-    { canCancel: () => !started }
+    {
+      canCancel: () => !started,
+      onCancelled: () => {
+        cancelled = true
+        const pendingId = callbacks.pendingId()
+        if (pendingId) {
+          callbacks.outcome?.reject(pendingId)
+        }
+      }
+    }
   )
   return {
     ...handle,
@@ -216,6 +225,6 @@ export function sendNativeChatReliableMessage(
         handle.cancel()
       }
     },
-    retainPendingOnCancel: () => started
+    retainPendingOnCancel: () => started || cancelled
   }
 }

@@ -337,4 +337,85 @@ describe('terminal.send clearUnsubmittedInput', () => {
     expect(harness.writes).toEqual(writes)
     harness.db.close()
   })
+  it('refuses a queued prompt if the agent exited into the same shell before its clear', async () => {
+    vi.useFakeTimers()
+    const harness = await createHarness('codex', true)
+    let foreground = 'codex'
+    const fresh = vi.fn(async () => foreground)
+    harness.runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'unused' }),
+      write: (_ptyId, data) => {
+        harness.writes.push(data)
+        return true
+      },
+      kill: () => true,
+      getForegroundProcess: async () => 'codex',
+      confirmForegroundProcess: fresh
+    })
+    const first = harness.dispatcher.dispatch(
+      clearingRequest(harness.handle, 'before-exit', 'first')
+    )
+    await vi.waitFor(() => expect(harness.writes).toHaveLength(2))
+    const second = harness.dispatcher.dispatch(
+      clearingRequest(harness.handle, 'after-exit', 'must not reach shell')
+    )
+    foreground = 'zsh'
+    await vi.runAllTimersAsync()
+    await first
+    await expect(second).resolves.toMatchObject({
+      ok: true,
+      result: { send: { accepted: false, refusedReason: 'no-agent' } }
+    })
+    expect(harness.writes).toHaveLength(2)
+    expect(harness.writes.join('')).not.toContain('must not reach shell')
+    expect(fresh).toHaveBeenCalled()
+    harness.db.close()
+  })
+
+  it('withholds Enter after a same-PTY agent exit and preserves unknown receipt without replay writes', async () => {
+    vi.useFakeTimers()
+    const harness = await createHarness('codex', true)
+    let foreground = 'codex'
+    harness.runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'unused' }),
+      write: (_ptyId, data) => {
+        harness.writes.push(data)
+        if (data.includes('not a shell command')) {
+          foreground = 'zsh'
+        }
+        return true
+      },
+      kill: () => true,
+      getForegroundProcess: async () => 'codex',
+      confirmForegroundProcess: async () => foreground
+    })
+    const request = clearingRequest(harness.handle, 'exit-before-enter', 'not a shell command')
+    const reply = vi.fn()
+    const first = harness.dispatcher.dispatchStreaming(request, reply)
+    await vi.runAllTimersAsync()
+    await first
+    expect(JSON.parse(reply.mock.calls.at(-1)![0])).toMatchObject({ ok: false })
+    expect(harness.writes).toHaveLength(2)
+    expect(harness.writes).not.toContain('\r')
+    await harness.dispatcher.dispatchStreaming(
+      {
+        id: 'read-exit',
+        authToken: 'token',
+        method: 'orchestration.requestShow',
+        params: { request: 'exit-before-enter' }
+      },
+      reply
+    )
+    expect(JSON.parse(reply.mock.calls.at(-1)![0])).toMatchObject({
+      ok: true,
+      result: { state: 'pending' }
+    })
+    await harness.dispatcher.dispatchStreaming(request, reply)
+    expect(JSON.parse(reply.mock.calls.at(-1)![0])).toMatchObject({
+      ok: false,
+      error: { code: 'operation_unknown' }
+    })
+    expect(harness.writes).toHaveLength(2)
+    harness.db.close()
+  })
 })
