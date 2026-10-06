@@ -9,7 +9,7 @@ import {
   type Page
 } from '@stablyai/playwright-test'
 import { z } from 'zod'
-import type {} from '../../tests/e2e/helpers/runtime-types'
+import '../../tests/e2e/helpers/runtime-types'
 import { getE2ECompletedOnboardingProfile } from '../../tests/e2e/helpers/e2e-completed-onboarding-profile'
 import { getOrcaElectronLaunchArgs } from '../../tests/e2e/helpers/electron-launch-args'
 import {
